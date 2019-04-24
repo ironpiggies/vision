@@ -18,6 +18,9 @@ rs-align: rs-align.cpp ../third-party/imgui/imgui.cpp ../third-party/imgui/imgui
 rs-align-advanced: rs-align-advanced.cpp ../third-party/imgui/imgui.cpp ../third-party/imgui/imgui_draw.cpp ../third-party/imgui/imgui_impl_glfw.cpp
 	g++ -std=c++11 $^ -o $@ -lrealsense2 -lglfw -lGL -lGLU -I../third-party/imgui/
 
+rs-measure: rs-measure.cpp
+	g++ -std=c++11 $< -o $@ -lrealsense2 -lglfw -lGL -lGLU -lpthread
+
 rs-dnn: rs-dnn.cpp
 	g++ -std=c++11 $< -o $@ -lrealsense2 `pkg-config --cflags --libs opencv`
 

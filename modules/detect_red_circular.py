@@ -234,6 +234,32 @@ def same_circle(a, b):
     return abs(ax-bx) < tol and abs(ay-by) < tol and abs(ar-br) < tol
 
 
+# To Do: Finish this
+def get_xyz(circle, depth_frame, depth_img):
+    """
+    :param circle: (x, y, r) of a circle
+    :param depth_frame: depth frame from RealSense
+    :param depth_img: depth image of shape (h, w)
+    :return: (x, y, z) of its center
+    """
+    h_im, w_im = depth_img.shape
+    w_frame = depth_frame.get_width()
+    h_frame = depth_frame.get_height()
+    x, y, _ = circle
+    depth_pixel = [int(float(y)/h_im*h_frame), int(float(x)/w_im*w_frame)]
+    depth = depth_frame.get_distance(depth_pixel[0], depth_pixel[1])
+    depth_intr = depth_frame.profile.as_video_stream_profile().intrinsics
+    depth_point = rs.rs2_deproject_pixel_to_point(depth_intr, depth_pixel, depth)
+    print(depth_point)
+    print(depth_img[y, x]*depth_scale)
+    assert np.isclose(depth_point[2], depth_img[y, x])
+    # pc = rs.pointcloud()
+    # points = pc.calculate(depth_frame)
+    # v, t = points.get_vertices(), points.get_texture_coordinates()
+    # verts = np.asanyarray(v).view(np.float32).reshape(-1, 3)  # xyz
+    # print(verts.shape)
+
+
 red_cir_counter = CirclesCounter()
 pizza_inner_counter = CirclesCounter()
 pizza_outer_counter = CirclesCounter()
@@ -292,6 +318,10 @@ while True:
         cv.circle(color_img, (x, y), r, (255, 0, 0), 4)
     for (x, y, r) in pizza_outer:
         cv.circle(color_img, (x, y), r, (0, 0, 255), 4)
+
+    # To Do: Test get_xyz implementation
+    if len(red_cir) > 0:
+        get_xyz(red_cir[0], depth_frame=depth, depth_img=depth_img)
 
 
     # cv.imshow('edges', edges)

@@ -233,6 +233,19 @@ def same_circle(a, b):
     tol = 5
     return abs(ax-bx) < tol and abs(ay-by) < tol and abs(ar-br) < tol
 
+###################
+# Coordinates Info
+# ----------------> x
+# |
+# |
+# |
+# y
+# cv.HoughCircles gives circles as (x, y, radius)
+# depth image and color image are indexed by (y, x)
+# depth_pixel value for rs2_deproject_pixel_to_point are represented by (x, y)
+# These coordinates all need to be scaled to their approriate scales
+###################
+
 
 # To Do: Finish this
 def get_xyz(circle, depth_frame, depth_img):
@@ -246,7 +259,7 @@ def get_xyz(circle, depth_frame, depth_img):
     w_frame = depth_frame.get_width()
     h_frame = depth_frame.get_height()
     x, y, _ = circle
-    depth_pixel = [int(float(y)/h_im*h_frame), int(float(x)/w_im*w_frame)]
+    depth_pixel = [int(float(x)/w_im*w_frame), int(float(y)/h_im*h_frame)]
     depth = depth_frame.get_distance(depth_pixel[0], depth_pixel[1])
     depth_intr = depth_frame.profile.as_video_stream_profile().intrinsics
     depth_point = rs.rs2_deproject_pixel_to_point(depth_intr, depth_pixel, depth)

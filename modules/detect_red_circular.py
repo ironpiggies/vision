@@ -234,7 +234,7 @@ def same_circle(a, b):
     return abs(ax-bx) < tol and abs(ay-by) < tol and abs(ar-br) < tol
 
 ###################
-# Coordinates Info
+# Coordinates Info - 2D
 # ----------------> x
 # |
 # |
@@ -244,6 +244,19 @@ def same_circle(a, b):
 # depth image and color image are indexed by (y, x)
 # depth_pixel value for rs2_deproject_pixel_to_point are represented by (x, y)
 # These coordinates all need to be scaled to their approriate scales
+#
+# Coordinates Info - 3D
+# ---------->x
+# `
+# | `
+# |   `
+# |     `
+# y       z
+# 
+# point from rs pointcloud is (x, y, z)
+# x to the right
+# y to the bottom
+# z to the forward
 ###################
 
 
@@ -284,6 +297,7 @@ wait_time = 100  # in milliseconds, time to wait in each loop
 while True:
     time_it += 1
     frames = pipe.wait_for_frames()
+    # To Do: Align to color frame
     # frames = align.process(frames)
 
     color = frames.get_color_frame()

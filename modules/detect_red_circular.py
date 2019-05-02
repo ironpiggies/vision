@@ -13,7 +13,7 @@ config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
 config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
 
 # Set alignment
-align = rs.align(rs.stream.depth)
+align = rs.align(rs.stream.color)
 
 # Start pipeline
 pipe = rs.pipeline()
@@ -214,9 +214,11 @@ class CirclesCounter:
     def most_common(self, n=5):
         mc = self.cnt.most_common(n)
         circles = []
+        counts = []
         for c in mc:
             circles.append(c[0].array)
-        return circles
+            counts.append(c[1])
+        return circles, counts
 
     def clear(self):
         self.cnt = Counter()
@@ -260,7 +262,6 @@ def same_circle(a, b):
 ###################
 
 
-# To Do: Finish this
 def get_xyz(circle, depth_frame, depth_img):
     """
     :param circle: (x, y, r) of a circle
@@ -276,9 +277,15 @@ def get_xyz(circle, depth_frame, depth_img):
     depth = depth_frame.get_distance(depth_pixel[0], depth_pixel[1])
     depth_intr = depth_frame.profile.as_video_stream_profile().intrinsics
     depth_point = rs.rs2_deproject_pixel_to_point(depth_intr, depth_pixel, depth)
-    print(depth_point)
-    print(depth_img[y, x]*depth_scale)
-    assert np.isclose(depth_point[2], depth_img[y, x])
+    # print(depth_point)
+    return depth_point
+
+    # Check two values match
+    # depth_from_image = depth_img[y, x] * depth_scale
+    # depth_from_cloud = depth_point[2]
+    # if depth_from_image != 0:
+    #     assert np.isclose(depth_from_cloud, depth_from_image, atol=1e-2)
+
     # pc = rs.pointcloud()
     # points = pc.calculate(depth_frame)
     # v, t = points.get_vertices(), points.get_texture_coordinates()
@@ -297,8 +304,8 @@ wait_time = 100  # in milliseconds, time to wait in each loop
 while True:
     time_it += 1
     frames = pipe.wait_for_frames()
-    # To Do: Align to color frame
-    # frames = align.process(frames)
+    # To Do: Check align to color frame
+    frames = align.process(frames)
 
     color = frames.get_color_frame()
 
@@ -333,9 +340,9 @@ while True:
     pizza_inner_counter.update(pizza_inner)
     pizza_outer_counter.update(pizza_outer)
 
-    red_cir = red_cir_counter.most_common(5)
-    pizza_inner = pizza_inner_counter.most_common(9)
-    pizza_outer = pizza_outer_counter.most_common(1)
+    red_cir, red_cir_counts = red_cir_counter.most_common(5)
+    pizza_inner, pizza_inner_counts = pizza_inner_counter.most_common(9)
+    pizza_outer, pizza_outer_counts = pizza_outer_counter.most_common(1)
 
     # print(pizza_outer)
 
@@ -346,10 +353,19 @@ while True:
     for (x, y, r) in pizza_outer:
         cv.circle(color_img, (x, y), r, (0, 0, 255), 4)
 
-    # To Do: Test get_xyz implementation
-    if len(red_cir) > 0:
-        get_xyz(red_cir[0], depth_frame=depth, depth_img=depth_img)
+    # Test get_xyz implementation
+    # if len(pizza_outer) > 0:
+    #     get_xyz(pizza_outer[0], depth_frame=depth, depth_img=depth_img)
 
+    for rc, rc_count in zip(red_cir, red_cir_counts):
+        rc_coord = get_xyz(rc, depth_frame=depth, depth_img=depth_img)
+        print("red circle: {}, counts: {}".format(np.round(rc_coord, 3), rc_count))
+    for pzi, pzi_count in zip(pizza_inner, pizza_inner_counts):
+        pzi_coord = get_xyz(pzi, depth_frame=depth, depth_img=depth_img)
+        print("pizza inner: {}, counts: {}".format(np.round(pzi_coord, 3), pzi_count))
+    for pzo, pzo_count in zip(pizza_outer, pizza_outer_counts):
+        pzo_coord = get_xyz(pzo, depth_frame=depth, depth_img=depth_img)
+        print("pizza outer: {}, counts: {}".format(np.round(pzo_coord, 3), pzo_count))
 
     # cv.imshow('edges', edges)
     # detect.set_data(edges)

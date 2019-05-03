@@ -15,11 +15,21 @@ with coordinates relative to camera, apply transfrom to get topping coordinates 
 send out the coordinates!
 '''
 
-#toppings here:
-pep={
+#toppings here: (all of these need more testing and to work better with a better picture)
+pep={ #seem to work pretty well
 "name":"pepperoni",
 "upper_hsv_mask":[175,140,90],
 "lower_hsv_mask":[142,51,55],
+}
+piz={ #these values work well but different processing is needed for pizza
+"name":"pizza",
+"upper_hsv_mask":[8,220,170],
+"lower_hsv_mask":[0,190,150],
+}
+ham={
+"name":"ham",
+"upper_hsv_mask":[170,140,190],
+"lower_hsv_mask":[160,120,130],
 }
 
 toppings_list=[pep]
@@ -43,7 +53,7 @@ def find_topping_locations(img,topping):
     #should be black and white coming out of this
 
     #erode and dilate to reduce noise
-    denoised=denoise(masked_img)
+    denoised=denoise(masked_img) #works well for pepperoni,not so much for pizza
 
     #use contours to detect different blobs
     im2,contours,hierarchy=cv2.findContours(denoised,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -96,5 +106,10 @@ def find_locs(contours):
 
 img=cv2.imread('/Users/Nic/MIT/2.12/vision/modules/test_Color.png')
 img = np.array(img, dtype=np.uint8)
+
+pizza=cv2.imread('/Users/Nic/MIT/2.12/vision/modules/test2_Color.png')
+pizza=np.array(pizza, dtype=np.uint8)
+vision_helper.look_at_hsv(pizza)
+#find_topping_locations(pizza,ham)
 #vision_helper.look_at_hsv(img)
-find_topping_locations(img,pep)
+#find_topping_locations(img,pep)

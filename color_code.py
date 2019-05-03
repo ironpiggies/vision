@@ -105,7 +105,7 @@ def find_locs(contours):
         averages.append((x_avg,y_avg)) #add centroid for each blob
     return averages
 
-img=cv2.imread('/Users/Nic/MIT/2.12/vision/modules/test_Color.png')
+img=cv2.imread('modules/test_Color.png')
 img = np.array(img, dtype=np.uint8)
 
 pizza=cv2.imread('modules/test2_Color.png')

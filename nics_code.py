@@ -26,13 +26,13 @@ piz={ #these values work well but different processing is needed for pizza
 "upper_hsv_mask":[8,220,170],
 "lower_hsv_mask":[0,190,150],
 }
-ham={
+ham={ 
 "name":"ham",
-"upper_hsv_mask":[170,140,190],
-"lower_hsv_mask":[160,120,130],
+"upper_hsv_mask":[180,190,210],
+"lower_hsv_mask":[160,165,160],
 }
 
-toppings_list=[pep]
+toppings_list=[pep,ham]
 
 def get_all_items(img):
     location={}
@@ -66,15 +66,16 @@ def find_topping_locations(img,topping):
     #if nested contours, get the outer ones only
 
     #print(len(outer_contours))
-    print(find_locs(contours))
+    locs=find_locs(contours)
+    print(locs)
     cv2.waitKey(0)
-
+    return(locs)
     #oof
 
 def denoise(img):
     #erode first then dilate to reduce noice and
     size=3
-    iters=2
+    iters=1
 
     cv2.imshow("Image",img)
     cv2.waitKey(0)
@@ -83,7 +84,7 @@ def denoise(img):
     cv2.imshow("Image",erosion)
     cv2.waitKey(0)
 
-    dilation=cv2.dilate(erosion,kernel,iterations=iters)
+    dilation=cv2.dilate(erosion,kernel,iterations=iters+2)
     cv2.imshow("Image",dilation)
     cv2.waitKey(0)
     return(dilation)
@@ -109,7 +110,10 @@ img = np.array(img, dtype=np.uint8)
 
 pizza=cv2.imread('/Users/Nic/MIT/2.12/vision/modules/test2_Color.png')
 pizza=np.array(pizza, dtype=np.uint8)
-vision_helper.look_at_hsv(pizza)
+test1=cv2.imread('pics/test_pic_1.jpg')
+test1=np.array(test1, dtype=np.uint8)
+vision_helper.look_at_hsv(test1)
+get_all_items(test1)
 #find_topping_locations(pizza,ham)
 #vision_helper.look_at_hsv(img)
 #find_topping_locations(img,pep)

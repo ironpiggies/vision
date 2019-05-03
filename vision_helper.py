@@ -23,5 +23,6 @@ def look_at_hsv(img):
     print("G value is S, scale of 0-255")
     print("R value is V, scale of 0-255")
     print("press any key on the picture to close it")
+    #hsv_img=cv2.resize(hsv_img,(400,300))
     cv2.imshow("Image",hsv_img)
     cv2.waitKey(0)

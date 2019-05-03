@@ -26,7 +26,7 @@ piz={ #these values work well but different processing is needed for pizza
 "upper_hsv_mask":[8,220,170],
 "lower_hsv_mask":[0,190,150],
 }
-ham={ 
+ham={
 "name":"ham",
 "upper_hsv_mask":[180,190,210],
 "lower_hsv_mask":[160,165,160],
@@ -108,12 +108,9 @@ def find_locs(contours):
 img=cv2.imread('/Users/Nic/MIT/2.12/vision/modules/test_Color.png')
 img = np.array(img, dtype=np.uint8)
 
-pizza=cv2.imread('/Users/Nic/MIT/2.12/vision/modules/test2_Color.png')
+pizza=cv2.imread('modules/test2_Color.png')
 pizza=np.array(pizza, dtype=np.uint8)
-test1=cv2.imread('pics/test_pic_1.jpg')
-test1=np.array(test1, dtype=np.uint8)
-vision_helper.look_at_hsv(test1)
-get_all_items(test1)
+
 #find_topping_locations(pizza,ham)
 #vision_helper.look_at_hsv(img)
 #find_topping_locations(img,pep)

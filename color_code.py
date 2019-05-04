@@ -21,7 +21,7 @@ pep={ #seem to work pretty well
 "upper_hsv_mask":[175,140,90],
 "lower_hsv_mask":[142,51,55],
 }
-piz={ #these values work well but different processing is needed for pizza
+piz={ #these values work well but different processing is needed for pizza i.e. just taking average of pixels or finding holes or something
 "name":"pizza",
 "upper_hsv_mask":[8,220,170],
 "lower_hsv_mask":[0,190,150],
@@ -32,7 +32,7 @@ ham={
 "lower_hsv_mask":[160,165,160],
 }
 
-toppings_list=[pep,ham]
+toppings_list=[pep,ham,piz]
 
 def get_all_items(img):
     location={}

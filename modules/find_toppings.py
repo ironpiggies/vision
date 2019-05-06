@@ -91,26 +91,31 @@ class ChefVision:
         :param color_img: color image read from RealSense
         :return: (a, b, c) where a are ingredient circles, b are pizza inner circles, c are pizza outer circle
         """
-        blur = cv.GaussianBlur(color_img, (7, 7), 0)
+        blur = cv.GaussianBlur(color_img, (11, 11), 0)
         # gray = cv.cvtColor(blur, cv.COLOR_BGR2GRAY)
-        edges = cv.Canny(blur, 50, 150, apertureSize=3)
-        circles = cv.HoughCircles(edges, cv.HOUGH_GRADIENT, 1, 6, param1=40, param2=25, minRadius=0, maxRadius=70)
+        edges = cv.Canny(blur, 35, 70, apertureSize=3)
 
-        red_cirs = []
-        pizza_inners = []
-        pizza_outers = []
-        if circles is not None:
-            circles = np.round(circles[0, :]).astype("int")  # convert circles to appropriate form
-            for circle in circles:
-                x, y, r = circle
-                if r < 10:
-                    red_cirs.append(circle)
-                if r > 10 and r < 14:
-                    pizza_inners.append(circle)
-                if r > 64 and r < 70:
-                    pizza_outers.append(circle)
+        circular_toppings = cv.HoughCircles(edges, cv.HOUGH_GRADIENT, 1, 25, param1=100, param2=25, minRadius=20, maxRadius=32)
+        if circular_toppings is not None:
+            circular_toppings = np.round(circular_toppings[0, :]).astype("int").tolist()
+        else:
+            circular_toppings = []
 
-        return red_cirs, pizza_inners, pizza_outers
+        pizza_inners = cv.HoughCircles(edges, cv.HOUGH_GRADIENT, 1, 25, param1=100, param2=25, minRadius=32,
+                                       maxRadius=43)
+        if pizza_inners is not None:
+            pizza_inners = np.round(pizza_inners[0, :]).astype("int").tolist()
+        else:
+            pizza_inners = []
+
+        pizza_outers = cv.HoughCircles(edges, cv.HOUGH_GRADIENT, 1, 25, param1=100, param2=25, minRadius=200,
+                                       maxRadius=215)
+        if pizza_outers is not None:
+            pizza_outers = np.round(pizza_outers[0, :]).astype("int").tolist()
+        else:
+            pizza_outers = []
+
+        return circular_toppings, pizza_inners, pizza_outers
 
     def filter_circles_by_depth(self, circles, depth_img, minmax=(0.5, 0.8)):
         min, max = minmax
@@ -176,13 +181,16 @@ class ChefVision:
         :param color_img: color image read from RealSense
         :return: circles that match red color
         """
-        new_cirs = []
+        red_cirs = []
+        black_rings = []
         hsv_img = cv.cvtColor(color_img, cv.COLOR_BGR2HSV)
         for circle in circles:
             x, y, r = circle
             if self.is_red_color(hsv_img[y, x]):
-                new_cirs.append(circle)
-        return new_cirs
+                red_cirs.append(circle)
+            else:
+                black_rings.append(circle)
+        return red_cirs, black_rings
 
     def is_red_color(self, pixel):
         """
@@ -230,6 +238,7 @@ class ChefVision:
         :return: dictionary with topping name as key, and list of coords as values, (if 2D, color image is also returned)
         """
         red_cir_counter = CirclesCounter()
+        black_ring_counter = CirclesCounter()
         pizza_inner_counter = CirclesCounter()
         pizza_outer_counter = CirclesCounter()
 
@@ -245,42 +254,44 @@ class ChefVision:
             # Get color image
             color = frames.get_color_frame()
             color_img = np.asarray(color.get_data())
-            color_img = cv.resize(color_img, (640, 360))
+            color_img = cv.resize(color_img, (1920, 1080))
 
             # Get depth image
             depth = frames.get_depth_frame()
             depth_img = np.asarray(depth.get_data())
-            depth_img = cv.resize(depth_img, (640, 360))
+            depth_img = cv.resize(depth_img, (1920, 1080))
 
-            # Denoise
-            blur = cv.GaussianBlur(color_img, (7, 7), 0)
-
-            # Get edges (for display purpose only)
-            edges = cv.Canny(blur, 50, 150, apertureSize=3)
-            edges_3_channel = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
+            # # Denoise
+            # blur = cv.GaussianBlur(color_img, (11, 11), 0)
+            #
+            # # Get edges (for display purpose only)
+            # edges = cv.Canny(blur, 50, 150, apertureSize=3)
+            # edges_3_channel = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
 
             # Hough Circles combined with size filtering
-            red_cirs, pizza_inners, pizza_outers = self.find_circles_by_HoughCircles(color_img)
+            circular_toppings, pizza_inners, pizza_outers = self.find_circles_by_HoughCircles(color_img)
 
             # Depth filtering
             table_min, table_max = 0.5, 0.8
-            red_cirs = self.filter_circles_by_depth(red_cirs, depth_img, (table_min, table_max))
+            circular_toppings = self.filter_circles_by_depth(circular_toppings, depth_img, (table_min, table_max))
             pizza_inners = self.filter_circles_by_depth(pizza_inners, depth_img, (table_min, table_max))
             pizza_outers = self.filter_circles_by_depth(pizza_outers, depth_img, (table_min, table_max))
 
             # Color filter for red circles
-            red_cirs = self.filter_red_circle(red_cirs, color_img)
+            red_cirs, black_rings = self.filter_red_circle(circular_toppings, color_img)
 
             # Pizza-inner-must-be-inside-pizza-outer filter
             pizza_inners, pizza_outers = self.filter_pizza(pizza_inners, pizza_outers)
 
             # Update and get most common
             red_cir_counter.update(red_cirs)
+            black_ring_counter.update(black_rings)
             pizza_inner_counter.update(pizza_inners)
             pizza_outer_counter.update(pizza_outers)
 
             if self.dev:
                 red_cirs, red_cir_counts = red_cir_counter.most_common(5)
+                black_rings, black_ring_counts = black_ring_counter.most_common(5)
                 pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
                 pizza_outers, pizza_outer_counts = pizza_outer_counter.most_common(1)
 
@@ -288,11 +299,14 @@ class ChefVision:
                 color_img_copy = np.copy(color_img)
                 for (x, y, r) in red_cirs:
                     cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
+                for (x, y, r) in black_rings:
+                    cv.circle(color_img_copy, (x, y), r, (255, 0, 255), 4)
                 for (x, y, r) in pizza_inners:
                     cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
                 for (x, y, r) in pizza_outers:
                     cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
 
+                color_img_copy = cv.resize(color_img_copy, (640, 360))
                 cv.imshow("detection", color_img_copy)
 
                 # Update every wait_time milliseconds, and exit on ctrl-C
@@ -311,36 +325,51 @@ class ChefVision:
                     break
 
         red_cirs, red_cir_counts = red_cir_counter.most_common(5)
+        black_rings, black_ring_counts = black_ring_counter.most_common(5)
         pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
         pizza_outers, pizza_outer_counts = pizza_outer_counter.most_common(1)
 
         # Get the ones that appear often enough
         count_threshold = 0*total_time*1000.0/wait_time
         confident_red_cirs = self.get_confident_ones(red_cirs, red_cir_counts, count_threshold)
+        confident_black_rings = self.get_confident_ones(black_rings, black_ring_counts, count_threshold)
         confident_pizza_inners = self.get_confident_ones(pizza_inners, pizza_inner_counts, count_threshold)
         confident_pizza_outers = self.get_confident_ones(pizza_outers, pizza_outer_counts, count_threshold)
 
         if not _3d_coord:
             return {
                 "red_cirs": confident_red_cirs,
+                "black_rings": confident_black_rings,
                 "pizza_inners": confident_pizza_inners,
                 "pizza_outers": confident_pizza_outers
             }, color_img
         else:
             red_cir_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_red_cirs]
+            black_ring_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_black_rings]
             pizza_inner_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_pizza_inners]
             pizza_outer_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_pizza_outers]
             return {
                 "red_cirs": red_cir_coords,
+                "black_rings": black_ring_coords,
                 "pizza_inners": pizza_inner_coords,
                 "pizza_outers": pizza_outer_coords
             }
 
 
-def find_pepperoni():
-    """ Find pepperoni - red circles
-    :return: pepperoni positions and radius as a list of [x, y, r]
-    """
+def draw_toppings(toppings, color_img):
+    red_cirs, black_rings, pizza_inners, pizza_outers = toppings["red_cirs"], toppings["black_rings"], \
+                                                        toppings["pizza_inners"], toppings["pizza_outers"]
+    color_img_copy = np.copy(color_img)
+    for (x, y, r) in red_cirs:
+        cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
+    for (x, y, r) in black_rings:
+        cv.circle(color_img_copy, (x, y), r, (255, 0, 255), 4)
+    for (x, y, r) in pizza_inners:
+        cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
+    for (x, y, r) in pizza_outers:
+        cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
+
+    return color_img_copy
 
 
 # Copied from Nic's vision_helper.py
@@ -384,29 +413,23 @@ def print_toppings_dict(toppings):
 def main():
     """ Code for testing functionalities
     """
-    USE_RECORDING = False
+    USE_RECORDING = True
     if USE_RECORDING:  # Use recording
         directory = "videos/"
         filename = directory + random.choice(os.listdir(directory))
         print("play from file: {}".format(filename))
         chef_vision = ChefVision(filename=filename)
     else:
-        print("use real video")
+        print("use current video")
         chef_vision = ChefVision()
 
     while True:
         toppings, color_img = chef_vision.find_toppings(_3d_coord=False)
-        red_cirs, pizza_inners, pizza_outers = toppings["red_cirs"], toppings["pizza_inners"], toppings["pizza_outers"]
 
         # Display detection
-        color_img_copy = np.copy(color_img)
-        for (x, y, r) in red_cirs:
-            cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
-        for (x, y, r) in pizza_inners:
-            cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
-        for (x, y, r) in pizza_outers:
-            cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
+        color_img_copy = draw_toppings(toppings, color_img)
 
+        color_img_copy = cv.resize(color_img_copy, (640, 360))
         cv.imshow("detection", color_img_copy)
 
         # Update every wait_time milliseconds, and exit on ctrl-C
@@ -432,5 +455,5 @@ def test_continuous():
 
 
 if __name__ == "__main__":
-    # main()
-    test_continuous()
+    main()
+    # test_continuous()

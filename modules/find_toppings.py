@@ -66,7 +66,10 @@ class CirclesCounter:
 
 
 class ChefVision:
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, dev=False):
+        # if we are in development phase
+        self.dev = dev
+
         # Configuration
         config = rs.config()
         if filename:
@@ -276,34 +279,36 @@ class ChefVision:
             pizza_inner_counter.update(pizza_inners)
             pizza_outer_counter.update(pizza_outers)
 
-            # red_cirs, red_cir_counts = red_cir_counter.most_common(5)
-            # pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
-            # pizza_outers, pizza_outer_counts = pizza_outer_counter.most_common(1)
+            if self.dev:
+                red_cirs, red_cir_counts = red_cir_counter.most_common(5)
+                pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
+                pizza_outers, pizza_outer_counts = pizza_outer_counter.most_common(1)
 
-            # # Display detection
-            # color_img_copy = np.copy(color_img)
-            # for (x, y, r) in red_cirs:
-            #     cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
-            # for (x, y, r) in pizza_inners:
-            #     cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
-            # for (x, y, r) in pizza_outers:
-            #     cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
-            #
-            # cv.imshow("detection", color_img_copy)
-            #
-            # # Update every wait_time milliseconds, and exit on ctrl-C
-            # k = cv.waitKey(wait_time)
-            # if k == 27:
-            #     break
-            #
-            # if wait_time * time_iterator > total_time * 1000:
-            #     time_iterator = 0
-            #     red_cir_counter.clear()
-            #     pizza_inner_counter.clear()
-            #     pizza_outer_counter.clear()
+                # Display detection
+                color_img_copy = np.copy(color_img)
+                for (x, y, r) in red_cirs:
+                    cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
+                for (x, y, r) in pizza_inners:
+                    cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
+                for (x, y, r) in pizza_outers:
+                    cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
 
-            if wait_time * time_iterator > total_time * 1000:
-                break
+                cv.imshow("detection", color_img_copy)
+
+                # Update every wait_time milliseconds, and exit on ctrl-C
+                k = cv.waitKey(wait_time)
+                if k == 27:
+                    break
+
+                if wait_time * time_iterator > total_time * 1000:
+                    time_iterator = 0
+                    red_cir_counter.clear()
+                    pizza_inner_counter.clear()
+                    pizza_outer_counter.clear()
+
+            else:
+                if wait_time * time_iterator > total_time * 1000:
+                    break
 
         red_cirs, red_cir_counts = red_cir_counter.most_common(5)
         pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
@@ -410,5 +415,22 @@ def main():
             break
 
 
+def test_continuous():
+    """ Test for displaying detection results continuously - mainly for development
+    """
+    USE_RECORDING = True
+    if USE_RECORDING:  # Use recording
+        directory = "videos/"
+        filename = directory + random.choice(os.listdir(directory))
+        print("play from file: {}".format(filename))
+        chef_vision = ChefVision(filename=filename, dev=True)
+    else:
+        print("use real video")
+        chef_vision = ChefVision(dev=True)
+
+    chef_vision.find_toppings()
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    test_continuous()

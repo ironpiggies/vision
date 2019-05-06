@@ -1,4 +1,5 @@
 # Play video back
+import os, random
 import pyrealsense2 as rs
 import cv2 as cv
 import numpy as np
@@ -33,7 +34,7 @@ class Playback:
             depth_img = np.asarray(depth.get_data())
             depth_img = cv.resize(depth_img, (640, 360))
 
-            cv.imshow("color", color_img)
+            cv.imshow("color", cv.cvtColor(color_img, cv.COLOR_BGR2HSV))
             cv.imshow("depth", depth_img)
 
             # Update every wait_time milliseconds, and exit on ctrl-C
@@ -42,5 +43,8 @@ class Playback:
                 break
 
 
-playback = Playback("video-2019-05-05_19_04_45.bag")
+directory = "videos/"
+filename = directory + random.choice(os.listdir(directory))
+playback = Playback(filename)
+print("play from file: {}".format(filename))
 playback.play()

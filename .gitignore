@@ -1,2 +1,8 @@
 # Visual Studio Code
 .vscode/
+
+# jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# ignore large video files
+modules/videos/

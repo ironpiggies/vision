@@ -16,11 +16,19 @@ class HashableArray:
         return hash(tuple(self.array))
 
 
+class HashableTopping:
+    def __init__(self, data):
+        self.data = data
+
+    def __hash__(self):
+        return hash(tuple(self.data[:2]))  # use (x, y) as hash
+
+
 class CirclesCounter:
     """ Keep a running count of frequent circles
     """
     def __init__(self):
-        self.max_keep = 100  # Max number of circles to keep
+        self.max_keep = 20  # Max number of circles to keep
         self.cnt = Counter()
 
     def update(self, circles):
@@ -28,7 +36,7 @@ class CirclesCounter:
             counted = False
             for hashable_old_cir in self.cnt:
                 old_cir = hashable_old_cir.array
-                if self.same_circle(new_cir, old_cir):
+                if self.same(new_cir, old_cir):
                     self.cnt[hashable_old_cir] += 1
                     counted = True
                     break
@@ -53,7 +61,7 @@ class CirclesCounter:
     def clear(self):
         self.cnt = Counter()
 
-    def same_circle(self, a, b):
+    def same(self, a, b):
         """
         :param a: circle a (x, y, r)
         :param b: circle b (x, y, r)
@@ -63,6 +71,55 @@ class CirclesCounter:
         bx, by, br = b
         tol = 5
         return abs(ax-bx) < tol and abs(ay-by) < tol and abs(ar-br) < tol
+
+
+class ToppingCounter:
+    """ Keep a running count of frequent toppings other than circles
+    """
+    def __init__(self):
+        self.max_keep = 20  # Max number of circles to keep
+        self.cnt = Counter()
+
+    def update(self, toppings):
+        for new_topping in toppings:
+            counted = False
+            for hashable_old_topping in self.cnt:
+                old_topping = hashable_old_topping.data
+                if self.same(new_topping, old_topping):
+                    self.cnt[hashable_old_topping] += 1
+                    counted = True
+                    break
+            if not counted:
+                self.cnt[HashableTopping(new_topping)] += 1
+
+        if len(self.cnt) > self.max_keep:
+            mc = self.cnt.most_common(self.max_keep)
+            self.cnt = Counter()
+            for c in mc:
+                self.cnt[c[0]] = c[1]
+
+    def most_common(self, n=5):
+        mc = self.cnt.most_common(n)
+        toppings = []
+        counts = []
+        for c in mc:
+            toppings.append(c[0].data)
+            counts.append(c[1])
+        return toppings, counts
+
+    def clear(self):
+        self.cnt = Counter()
+
+    def same(self, a, b):
+        """
+        :param a: topping a (x, y, contour)
+        :param b: topping b (x, y, contour)
+        :return: True if a and b likely the same to some precision
+        """
+        ax, ay, _ = a
+        bx, by, _ = b
+        tol = 5
+        return abs(ax-bx) < tol and abs(ay-by) < tol
 
 
 class ChefVision:
@@ -117,14 +174,20 @@ class ChefVision:
 
         return circular_toppings, pizza_inners, pizza_outers
 
-    def filter_circles_by_depth(self, circles, depth_img, minmax=(0.5, 0.8)):
+    def filter_toppings_by_depth(self, toppings, depth_img, minmax=(0.5, 0.8)):
+        """
+        :param toppings: list of toppings, each being (x, y, something)
+        :param depth_img: depth image
+        :param minmax: min and max thresholds
+        :return:
+        """
         min, max = minmax
-        new_cirs = []
-        for cir in circles:
-            x, y, _ = cir
+        new_toppings = []
+        for topping in toppings:
+            x, y, _ = topping
             if min < self.get_depth(depth_img, x, y) < max:
-                new_cirs.append(cir)
-        return new_cirs
+                new_toppings.append(topping)
+        return new_toppings
 
     def filter_pizza(self, pizza_inner, pizza_outer):
         """
@@ -215,9 +278,9 @@ class ChefVision:
                 confident_ones.append(stuff)
         return confident_ones
 
-    def get_xyz(self, circle, depth_frame, depth_img):
+    def get_xyz(self, center, depth_frame, depth_img):
         """
-        :param circle: (x, y, r) of a circle
+        :param center: (x, y) of a topping
         :param depth_frame: depth frame from RealSense
         :param depth_img: depth image of shape (h, w)
         :return: (x, y, z) of its center
@@ -225,12 +288,99 @@ class ChefVision:
         h_im, w_im = depth_img.shape
         w_frame = depth_frame.get_width()
         h_frame = depth_frame.get_height()
-        x, y, _ = circle
+        x, y = center
         depth_pixel = [int(float(x) / w_im * w_frame), int(float(y) / h_im * h_frame)]
         depth = depth_frame.get_distance(depth_pixel[0], depth_pixel[1])
         depth_intr = depth_frame.profile.as_video_stream_profile().intrinsics
         depth_point = rs.rs2_deproject_pixel_to_point(depth_intr, depth_pixel, depth)
         return depth_point
+
+    def find_yellow_triangles(self, color_img):
+        """
+        :param color_img: color image read from RealSense
+        :return: yellow_triangles: list of (x_center, y_center, contours)
+        """
+        # HSV masking
+        lower = np.array([20, 100, 100])
+        upper = np.array([30, 255, 255])
+        hsv_image = cv.cvtColor(color_img, cv.COLOR_BGR2HSV)
+        masked_hsv = cv.inRange(hsv_image, lower, upper)
+
+        # Find connected components
+        retval, labels = cv.connectedComponents(masked_hsv)
+
+        yellow_triangles = []
+        for label in range(retval):
+            new_img = (labels == label).astype("int")
+            # size thresholding
+            if 500 < np.sum(new_img) < 100000:
+                new_img = np.array(new_img*255, dtype=np.uint8)
+                _, thresh = cv.threshold(new_img, 127, 255, cv.THRESH_BINARY)
+                moments = cv.moments(thresh)
+                x_center = int(moments["m10"] / moments["m00"])
+                y_center = int(moments["m01"] / moments["m00"])
+                contours, _ = cv.findContours(thresh, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+                yellow_triangles.append([x_center, y_center, contours])
+
+        return yellow_triangles
+
+    def find_blue_fishes(self, color_img):
+        """
+        :param color_img: color image read from RealSense
+        :return: blue_fishes: list of (x_center, y_center, contours)
+        """
+        # HSV masking
+        lower = np.array([100, 150, 0])
+        upper = np.array([140, 255, 255])
+        hsv_image = cv.cvtColor(color_img, cv.COLOR_BGR2HSV)
+        masked_hsv = cv.inRange(hsv_image, lower, upper)
+
+        # Find connected components
+        retval, labels = cv.connectedComponents(masked_hsv)
+
+        blue_fishes = []
+        for label in range(retval):
+            new_img = (labels == label).astype("int")
+            # size thresholding
+            if 150 < np.sum(new_img) < 800:
+                new_img = np.array(new_img * 255, dtype=np.uint8)
+                _, thresh = cv.threshold(new_img, 127, 255, cv.THRESH_BINARY)
+                moments = cv.moments(thresh)
+                x_center = int(moments["m10"] / moments["m00"])
+                y_center = int(moments["m01"] / moments["m00"])
+                contours, _ = cv.findContours(thresh, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+                blue_fishes.append([x_center, y_center, contours])
+
+        return blue_fishes
+
+    def find_pink_squares(self, color_img):
+        """
+        :param color_img: color image read from RealSense
+        :return: pink_squares: list of (x_center, y_center, contours)
+        """
+        # HSV masking
+        lower = np.array([150, 100, 110])
+        upper = np.array([221, 255, 255])
+        hsv_image = cv.cvtColor(color_img, cv.COLOR_BGR2HSV)
+        masked_hsv = cv.inRange(hsv_image, lower, upper)
+
+        # Find connected components
+        retval, labels = cv.connectedComponents(masked_hsv)
+
+        pink_squares = []
+        for label in range(retval):
+            new_img = (labels == label).astype("int")
+            # size thresholding
+            if 1000 < np.sum(new_img) < 3000:
+                new_img = np.array(new_img * 255, dtype=np.uint8)
+                _, thresh = cv.threshold(new_img, 127, 255, cv.THRESH_BINARY)
+                moments = cv.moments(thresh)
+                x_center = int(moments["m10"] / moments["m00"])
+                y_center = int(moments["m01"] / moments["m00"])
+                contours, _ = cv.findContours(thresh, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+                pink_squares.append([x_center, y_center, contours])
+
+        return pink_squares
 
     def find_toppings(self, _3d_coord=True):
         """
@@ -239,12 +389,15 @@ class ChefVision:
         """
         red_cir_counter = CirclesCounter()
         black_ring_counter = CirclesCounter()
+        yellow_triangle_counter = ToppingCounter()
+        blue_fish_counter = ToppingCounter()
+        pink_square_counter = ToppingCounter()
         pizza_inner_counter = CirclesCounter()
         pizza_outer_counter = CirclesCounter()
 
         total_time = 1.0  # seconds
         time_iterator = 0
-        wait_time = 25  # milliseconds
+        wait_time = 100  # milliseconds
         while True:
             time_iterator += 1
             frames = self.pipe.wait_for_frames()
@@ -261,21 +414,14 @@ class ChefVision:
             depth_img = np.asarray(depth.get_data())
             depth_img = cv.resize(depth_img, (1920, 1080))
 
-            # # Denoise
-            # blur = cv.GaussianBlur(color_img, (11, 11), 0)
-            #
-            # # Get edges (for display purpose only)
-            # edges = cv.Canny(blur, 50, 150, apertureSize=3)
-            # edges_3_channel = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
-
             # Hough Circles combined with size filtering
             circular_toppings, pizza_inners, pizza_outers = self.find_circles_by_HoughCircles(color_img)
 
             # Depth filtering
             table_min, table_max = 0.5, 0.8
-            circular_toppings = self.filter_circles_by_depth(circular_toppings, depth_img, (table_min, table_max))
-            pizza_inners = self.filter_circles_by_depth(pizza_inners, depth_img, (table_min, table_max))
-            pizza_outers = self.filter_circles_by_depth(pizza_outers, depth_img, (table_min, table_max))
+            circular_toppings = self.filter_toppings_by_depth(circular_toppings, depth_img, (table_min, table_max))
+            pizza_inners = self.filter_toppings_by_depth(pizza_inners, depth_img, (table_min, table_max))
+            pizza_outers = self.filter_toppings_by_depth(pizza_outers, depth_img, (table_min, table_max))
 
             # Color filter for red circles
             red_cirs, black_rings = self.filter_red_circle(circular_toppings, color_img)
@@ -283,29 +429,47 @@ class ChefVision:
             # Pizza-inner-must-be-inside-pizza-outer filter
             pizza_inners, pizza_outers = self.filter_pizza(pizza_inners, pizza_outers)
 
+            # Find yellow triangles
+            yellow_triangles = self.find_yellow_triangles(color_img)
+            yellow_triangles = self.filter_toppings_by_depth(yellow_triangles, depth_img, (table_min, table_max))
+
+            # Find blue fishes
+            blue_fishes = self.find_blue_fishes(color_img)
+            blue_fishes = self.filter_toppings_by_depth(blue_fishes, depth_img, (table_min, table_max))
+
+            # Find pink squares
+            pink_squares = self.find_pink_squares(color_img)
+            pink_squares = self.filter_toppings_by_depth(pink_squares, depth_img, (table_min, table_max))
+
             # Update and get most common
             red_cir_counter.update(red_cirs)
             black_ring_counter.update(black_rings)
+            yellow_triangle_counter.update(yellow_triangles)
+            blue_fish_counter.update(blue_fishes)
+            pink_square_counter.update(pink_squares)
             pizza_inner_counter.update(pizza_inners)
             pizza_outer_counter.update(pizza_outers)
 
             if self.dev:
                 red_cirs, red_cir_counts = red_cir_counter.most_common(5)
                 black_rings, black_ring_counts = black_ring_counter.most_common(5)
+                yellow_triangles, yellow_triangle_counts = yellow_triangle_counter.most_common(5)
+                blue_fishes, blue_fish_counts = blue_fish_counter.most_common(5)
+                pink_squares, pink_square_counts = pink_square_counter.most_common(5)
                 pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
                 pizza_outers, pizza_outer_counts = pizza_outer_counter.most_common(1)
 
                 # Display detection
-                color_img_copy = np.copy(color_img)
-                for (x, y, r) in red_cirs:
-                    cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
-                for (x, y, r) in black_rings:
-                    cv.circle(color_img_copy, (x, y), r, (255, 0, 255), 4)
-                for (x, y, r) in pizza_inners:
-                    cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
-                for (x, y, r) in pizza_outers:
-                    cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
-
+                toppings = {
+                    "red_cirs": red_cirs,
+                    "black_rings": black_rings,
+                    "yellow_triangles": yellow_triangles,
+                    "blue_fishes": blue_fishes,
+                    "pink_squares": pink_squares,
+                    "pizza_inners": pizza_inners,
+                    "pizza_outers": pizza_outers
+                }
+                color_img_copy = draw_toppings(toppings, color_img)
                 color_img_copy = cv.resize(color_img_copy, (640, 360))
                 cv.imshow("detection", color_img_copy)
 
@@ -317,6 +481,10 @@ class ChefVision:
                 if wait_time * time_iterator > total_time * 1000:
                     time_iterator = 0
                     red_cir_counter.clear()
+                    black_ring_counter.clear()
+                    yellow_triangle_counter.clear()
+                    blue_fish_counter.clear()
+                    pink_square_counter.clear()
                     pizza_inner_counter.clear()
                     pizza_outer_counter.clear()
 
@@ -326,6 +494,9 @@ class ChefVision:
 
         red_cirs, red_cir_counts = red_cir_counter.most_common(5)
         black_rings, black_ring_counts = black_ring_counter.most_common(5)
+        yellow_triangles, yellow_triangle_counts = yellow_triangle_counter.most_common(5)
+        blue_fishes, blue_fish_counts = blue_fish_counter.most_common(5)
+        pink_squares, pink_square_counts = pink_square_counter.most_common(5)
         pizza_inners, pizza_inner_counts = pizza_inner_counter.most_common(9)
         pizza_outers, pizza_outer_counts = pizza_outer_counter.most_common(1)
 
@@ -333,6 +504,9 @@ class ChefVision:
         count_threshold = 0*total_time*1000.0/wait_time
         confident_red_cirs = self.get_confident_ones(red_cirs, red_cir_counts, count_threshold)
         confident_black_rings = self.get_confident_ones(black_rings, black_ring_counts, count_threshold)
+        confident_yellow_triangles = self.get_confident_ones(yellow_triangles, yellow_triangle_counts, count_threshold)
+        confident_blue_fishes = self.get_confident_ones(blue_fishes, blue_fish_counts, count_threshold)
+        confident_pink_squares = self.get_confident_ones(pink_squares, pink_square_counts, count_threshold)
         confident_pizza_inners = self.get_confident_ones(pizza_inners, pizza_inner_counts, count_threshold)
         confident_pizza_outers = self.get_confident_ones(pizza_outers, pizza_outer_counts, count_threshold)
 
@@ -340,17 +514,26 @@ class ChefVision:
             return {
                 "red_cirs": confident_red_cirs,
                 "black_rings": confident_black_rings,
+                "yellow_triangles": confident_yellow_triangles,
+                "blue_fishes": confident_blue_fishes,
+                "pink_squares": confident_pink_squares,
                 "pizza_inners": confident_pizza_inners,
                 "pizza_outers": confident_pizza_outers
             }, color_img
         else:
-            red_cir_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_red_cirs]
-            black_ring_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_black_rings]
-            pizza_inner_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_pizza_inners]
-            pizza_outer_coords = [self.get_xyz(circle, depth_frame=depth, depth_img=depth_img) for circle in confident_pizza_outers]
+            red_cir_coords = [self.get_xyz(circle[:2], depth_frame=depth, depth_img=depth_img) for circle in confident_red_cirs]
+            black_ring_coords = [self.get_xyz(circle[:2], depth_frame=depth, depth_img=depth_img) for circle in confident_black_rings]
+            yellow_triangle_coords = [self.get_xyz(triangle[:2], depth_frame=depth, depth_img=depth_img) for triangle in confident_yellow_triangles]
+            blue_fish_coords = [self.get_xyz(fish[:2], depth_frame=depth, depth_img=depth_img) for fish in confident_blue_fishes]
+            pink_square_coords = [self.get_xyz(square[:2], depth_frame=depth, depth_img=depth_img) for square in confident_pink_squares]
+            pizza_inner_coords = [self.get_xyz(circle[:2], depth_frame=depth, depth_img=depth_img) for circle in confident_pizza_inners]
+            pizza_outer_coords = [self.get_xyz(circle[:2], depth_frame=depth, depth_img=depth_img) for circle in confident_pizza_outers]
             return {
                 "red_cirs": red_cir_coords,
                 "black_rings": black_ring_coords,
+                "yellow_triangles": yellow_triangle_coords,
+                "blue_fishes": blue_fish_coords,
+                "pink_squares": pink_square_coords,
                 "pizza_inners": pizza_inner_coords,
                 "pizza_outers": pizza_outer_coords
             }
@@ -359,6 +542,10 @@ class ChefVision:
 def draw_toppings(toppings, color_img):
     red_cirs, black_rings, pizza_inners, pizza_outers = toppings["red_cirs"], toppings["black_rings"], \
                                                         toppings["pizza_inners"], toppings["pizza_outers"]
+    yellow_triangles = toppings["yellow_triangles"]
+    blue_fishes = toppings["blue_fishes"]
+    pink_squares = toppings["pink_squares"]
+
     color_img_copy = np.copy(color_img)
     for (x, y, r) in red_cirs:
         cv.circle(color_img_copy, (x, y), r, (0, 255, 0), 4)
@@ -368,6 +555,13 @@ def draw_toppings(toppings, color_img):
         cv.circle(color_img_copy, (x, y), r, (255, 0, 0), 4)
     for (x, y, r) in pizza_outers:
         cv.circle(color_img_copy, (x, y), r, (0, 0, 255), 4)
+
+    for (x, y, contours) in yellow_triangles:
+        cv.drawContours(color_img_copy, contours, -1, [255, 255, 0], 4)
+    for (x, y, contours) in blue_fishes:
+        cv.drawContours(color_img_copy, contours, -1, [0, 255, 255], 4)
+    for (x, y, contours) in pink_squares:
+        cv.drawContours(color_img_copy, contours, -1, [0, 0, 0], 4)
 
     return color_img_copy
 
@@ -413,7 +607,7 @@ def print_toppings_dict(toppings):
 def main():
     """ Code for testing functionalities
     """
-    USE_RECORDING = True
+    USE_RECORDING = False
     if USE_RECORDING:  # Use recording
         directory = "videos/"
         filename = directory + random.choice(os.listdir(directory))
